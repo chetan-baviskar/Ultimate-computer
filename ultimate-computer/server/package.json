@@ -1,0 +1,21 @@
+{
+  "name": "ultimate-computer-server",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Express API for the Ultimate Computer website",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "provision:admin": "node scripts/provision-admin.mjs",
+    "provision:admin:check": "node scripts/provision-admin.mjs --check",
+    "test": "node test-degraded.js && node test-firebase-recovery.mjs && node test-login-flow.js && node test-admin-dashboard.mjs && node test-admin-auth.mjs && node test-student-auth.mjs && node test-courses.mjs && node test-applications.mjs && node test-enquiries.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "firebase-admin": "^14.5.0"
+  }
+}
