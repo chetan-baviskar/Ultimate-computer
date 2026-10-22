@@ -86,21 +86,35 @@ const initFirebase = () => {
   }
 
   // Guard 2: the key file must exist.
-  if (!fs.existsSync(SERVICE_ACCOUNT_PATH)) {
-    console.warn(`[Firebase] Service-account file not found at server/${path.basename(SERVICE_ACCOUNT_PATH)} — Firestore stays disabled.`);
-    firebaseState = { status: 'not-configured', code: 'SERVICE_ACCOUNT_MISSING', db: null };
-    return firebaseState;
-  }
+ let serviceAccount;
 
-  // Guard 3: it must parse and contain every required field.
-  let serviceAccount;
-  try {
-    serviceAccount = JSON.parse(fs.readFileSync(SERVICE_ACCOUNT_PATH, 'utf8'));
-  } catch {
-    console.warn('[Firebase] Service-account file is not valid JSON — Firestore stays disabled.');
-    firebaseState = { status: 'not-configured', code: 'SERVICE_ACCOUNT_INVALID_JSON', db: null };
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    serviceAccount = JSON.parse(
+      process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+    );
+  } else if (fs.existsSync(SERVICE_ACCOUNT_PATH)) {
+    serviceAccount = JSON.parse(
+      fs.readFileSync(SERVICE_ACCOUNT_PATH, 'utf8')
+    );
+  } else {
+    firebaseState = {
+      status: 'not-configured',
+      code: 'SERVICE_ACCOUNT_MISSING',
+      db: null,
+      auth: null
+    };
     return firebaseState;
   }
+} catch {
+  firebaseState = {
+    status: 'not-configured',
+    code: 'SERVICE_ACCOUNT_INVALID',
+    db: null,
+    auth: null
+  };
+  return firebaseState;
+}
 
   const missing = REQUIRED_FIELDS.filter((field) => !serviceAccount[field]);
   if (missing.length > 0) {
