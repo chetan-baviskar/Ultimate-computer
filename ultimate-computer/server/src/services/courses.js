@@ -31,7 +31,7 @@
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
-import { getFirestore } from '../config/firebase.js';
+import { getFirestore, runWithFreshChannel } from '../config/firebase.js';
 import { coursesData } from '../data/coursesData.js';
 
 export const COURSES_COLLECTION = 'courses';
@@ -147,18 +147,26 @@ const buildCreateRecord = (fields) => ({
 
 /* ------------------------------------------------------------------ reads */
 
+// Every Firestore operation below runs inside `runWithFreshChannel`: when the
+// Admin SDK's credential channel has gone stale (UNAUTHENTICATED /
+// DEADLINE_EXCEEDED / UNAVAILABLE), the call rebuilds the channel and retries
+// once instead of surfacing 503 DATA_LAYER_UNAVAILABLE. Application-level
+// errors (NOT_FOUND, VALIDATION_ERROR, ...) pass through untouched.
+
 /** All courses, sorted by name (the public catalogue). */
-export const listCourses = async () => {
-  const snap = await courses().get();
-  return snap.docs.map(snapshotToCourse).sort(byName);
-};
+export const listCourses = async () =>
+  runWithFreshChannel(async () => {
+    const snap = await courses().get();
+    return snap.docs.map(snapshotToCourse).sort(byName);
+  });
 
 /** One course by document id, or null when it does not exist. */
-export const getCourse = async (id) => {
-  if (!id) return null;
-  const snap = await courseDoc(id).get();
-  return snap.exists ? snapshotToCourse(snap) : null;
-};
+export const getCourse = async (id) =>
+  runWithFreshChannel(async () => {
+    if (!id) return null;
+    const snap = await courseDoc(id).get();
+    return snap.exists ? snapshotToCourse(snap) : null;
+  });
 
 /* ----------------------------------------------------------------- writes */
 
@@ -172,21 +180,23 @@ export const createCourse = async (fields) => {
   if (!fields.courseName) throw ValidationError('Course name is required.');
 
   const base = slugify(fields.courseName);
-  let lastError = null;
-  for (let attempt = 0; attempt < 25; attempt += 1) {
-    const id = attempt === 0 ? base : `${base}-${attempt + 1}`;
-    try {
-      const ref = courseDoc(id);
-      await ref.create(buildCreateRecord({ ...fields, id }));
-      const created = await ref.get();
-      return snapshotToCourse(created);
-    } catch (err) {
-      // ALREADY_EXISTS => another course holds this id — try the next suffix.
-      if (err?.code !== 6 && err?.code !== 'already-exists') throw err;
-      lastError = err;
+  return runWithFreshChannel(async () => {
+    let lastError = null;
+    for (let attempt = 0; attempt < 25; attempt += 1) {
+      const id = attempt === 0 ? base : `${base}-${attempt + 1}`;
+      try {
+        const ref = courseDoc(id);
+        await ref.create(buildCreateRecord({ ...fields, id }));
+        const created = await ref.get();
+        return snapshotToCourse(created);
+      } catch (err) {
+        // ALREADY_EXISTS => another course holds this id — try the next suffix.
+        if (err?.code !== 6 && err?.code !== 'already-exists') throw err;
+        lastError = err;
+      }
     }
-  }
-  throw lastError || ValidationError('Could not allocate a unique course id.');
+    throw lastError || ValidationError('Could not allocate a unique course id.');
+  });
 };
 
 /**
@@ -195,28 +205,30 @@ export const createCourse = async (fields) => {
  *
  * @throws {Error & {code: 'NOT_FOUND'}} when the course does not exist
  */
-export const updateCourse = async (id, fields) => {
-  const ref = courseDoc(id);
-  const snap = await ref.get();
-  if (!snap.exists) throw notFoundError();
+export const updateCourse = async (id, fields) =>
+  runWithFreshChannel(async () => {
+    const ref = courseDoc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFoundError();
 
-  await ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() });
-  const updated = await ref.get();
-  return snapshotToCourse(updated);
-};
+    await ref.update({ ...fields, updatedAt: FieldValue.serverTimestamp() });
+    const updated = await ref.get();
+    return snapshotToCourse(updated);
+  });
 
 /**
  * Deletes a course.
  *
  * @throws {Error & {code: 'NOT_FOUND'}} when the course does not exist
  */
-export const deleteCourse = async (id) => {
-  const ref = courseDoc(id);
-  const snap = await ref.get();
-  if (!snap.exists) throw notFoundError();
-  await ref.delete();
-  return { id, deleted: true };
-};
+export const deleteCourse = async (id) =>
+  runWithFreshChannel(async () => {
+    const ref = courseDoc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFoundError();
+    await ref.delete();
+    return { id, deleted: true };
+  });
 
 /* ----------------------------------------------------------------- seeding */
 
@@ -227,32 +239,34 @@ export const deleteCourse = async (id) => {
  *
  * @returns {Promise<{seeded: boolean, count: number}>}
  */
-export const seedCoursesIfEmpty = async () => {
-  const snapshot = await courses().limit(1).get();
-  if (!snapshot.empty) return { seeded: false, count: (await courses().count().get()).data().count };
+export const seedCoursesIfEmpty = async () =>
+  runWithFreshChannel(async () => {
+    const snapshot = await courses().limit(1).get();
+    if (!snapshot.empty) return { seeded: false, count: (await courses().count().get()).data().count };
 
-  const batch = getFirestore().batch();
-  for (const course of coursesData) {
-    const { id, ...rest } = course;
-    batch.set(courseDoc(id), {
-      id,
-      ...rest,
-      status: course.status || 'active',
-      createdAt: FieldValue.serverTimestamp(),
-      updatedAt: FieldValue.serverTimestamp()
-    });
-  }
-  await batch.commit();
-  console.log(`[Courses] Seeded ${coursesData.length} bundled course(s) into Firestore.`);
-  return { seeded: true, count: coursesData.length };
-};
+    const batch = getFirestore().batch();
+    for (const course of coursesData) {
+      const { id, ...rest } = course;
+      batch.set(courseDoc(id), {
+        id,
+        ...rest,
+        status: course.status || 'active',
+        createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp()
+      });
+    }
+    await batch.commit();
+    console.log(`[Courses] Seeded ${coursesData.length} bundled course(s) into Firestore.`);
+    return { seeded: true, count: coursesData.length };
+  });
 
 /**
  * Guarantees a catalogue is present before a public read: seeds on first ever
  * request, otherwise simply returns what is stored. Never resurrects data.
  */
-export const listCoursesWithLazySeed = async () => {
-  const snapshot = await courses().limit(1).get();
-  if (snapshot.empty) await seedCoursesIfEmpty();
-  return listCourses();
-};
+export const listCoursesWithLazySeed = async () =>
+  runWithFreshChannel(async () => {
+    const snapshot = await courses().limit(1).get();
+    if (snapshot.empty) await seedCoursesIfEmpty();
+    return listCourses();
+  });

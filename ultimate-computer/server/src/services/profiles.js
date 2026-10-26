@@ -188,31 +188,33 @@ export const touchLastLogin = async (uid) => {
  * same email is returned instead of duplicated (idempotent, no spam).
  */
 export const saveMigrationRequest = async ({ email, fullName = '', mobile = '' }) => {
-  const db = getFirestore();
   const normalizedEmail = normalizeEmail(email);
-  // Single-field query (no composite index required); the status filter is
-  // applied in memory so this works on a brand-new collection.
-  const prior = await db
-    .collection(MIGRATION_REQUESTS_COLLECTION)
-    .where('email', '==', normalizedEmail)
-    .limit(10)
-    .get();
+  return runWithFreshChannel(async () => {
+    const db = getFirestore();
+    // Single-field query (no composite index required); the status filter is
+    // applied in memory so this works on a brand-new collection.
+    const prior = await db
+      .collection(MIGRATION_REQUESTS_COLLECTION)
+      .where('email', '==', normalizedEmail)
+      .limit(10)
+      .get();
 
-  const open = prior.docs.find((snap) => (snap.data()?.status || 'pending') === 'pending');
-  if (open) {
-    return { created: false, request: { id: open.id, ...toPlainObject(open.data()) } };
-  }
+    const open = prior.docs.find((snap) => (snap.data()?.status || 'pending') === 'pending');
+    if (open) {
+      return { created: false, request: { id: open.id, ...toPlainObject(open.data()) } };
+    }
 
-  const docRef = await db.collection(MIGRATION_REQUESTS_COLLECTION).add({
-    email: normalizedEmail,
-    fullName: String(fullName || '').trim(),
-    mobile: String(mobile || '').trim(),
-    status: 'pending',
-    source: 'student-portal',
-    createdAt: FieldValue.serverTimestamp()
+    const docRef = await db.collection(MIGRATION_REQUESTS_COLLECTION).add({
+      email: normalizedEmail,
+      fullName: String(fullName || '').trim(),
+      mobile: String(mobile || '').trim(),
+      status: 'pending',
+      source: 'student-portal',
+      createdAt: FieldValue.serverTimestamp()
+    });
+
+    return { created: true, request: { id: docRef.id, email: normalizedEmail, status: 'pending' } };
   });
-
-  return { created: true, request: { id: docRef.id, email: normalizedEmail, status: 'pending' } };
 };
 
 /** Plain-object copy of a Firestore document with Timestamps as ISO strings. */

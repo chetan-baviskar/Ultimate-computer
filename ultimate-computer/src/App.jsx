@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { NavigationProvider, useNavigation } from './context/NavigationContext';
 
 import { TopHeader } from './components/layout/TopHeader';
 import { Navbar } from './components/layout/Navbar';
 import { Footer } from './components/layout/Footer';
+import { BackArrow } from './components/ui/BackArrow';
 
 import { Home } from './pages/Home';
 import { About } from './pages/About';
@@ -19,9 +21,22 @@ import { StudentDashboard } from './pages/StudentDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { NotFound } from './pages/NotFound';
 
+// Every page id the router knows about (anything else renders the 404 page).
+const KNOWN_PAGES = [
+  'home', 'about', 'courses', 'course-details', 'fee-structure', 'admission',
+  'contact', 'login', 'register', 'forgot-password', 'student-dashboard',
+  'admin-dashboard', '404',
+];
+
+// Pages that already have their own (contextual) back navigation, so the
+// shared back arrow is not shown twice on them. Home never needs one.
+const PAGES_WITH_OWN_BACK = ['home', 'course-details', '404'];
+
 function MainApp() {
   const { currentUser, role, loading } = useAuth();
-  const [activePage, setActivePage] = useState('home');
+  // Page state lives in the navigation context so every page change is also
+  // recorded in the browser history (Back / Forward / refresh friendly).
+  const { activePage, setActivePage } = useNavigation();
   const [selectedCourseForAdmission, setSelectedCourseForAdmission] = useState('');
   const [activeCourseDetails, setActiveCourseDetails] = useState(null);
 
@@ -120,6 +135,12 @@ function MainApp() {
     }
   };
 
+  // Shared back arrow: shown at the top-left of every inner page. Unknown URLs
+  // render the 404 page (which has its own "Back to Home" button), so they are
+  // excluded through KNOWN_PAGES.
+  const showBackArrow =
+    KNOWN_PAGES.includes(activePage) && !PAGES_WITH_OWN_BACK.includes(activePage);
+
   return (
     <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 font-sans antialiased selection:bg-blue-600 selection:text-white">
       {/* Top Contact Header */}
@@ -130,6 +151,14 @@ function MainApp() {
 
       {/* Main View Area */}
       <main className="flex-grow">
+        {/* Back arrow - sits in normal flow directly below the navbar, so it can
+            never overlap page headings, forms or other content. */}
+        {showBackArrow && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <BackArrow />
+          </div>
+        )}
+
         {renderPage()}
       </main>
 
@@ -142,7 +171,9 @@ function MainApp() {
 export function App() {
   return (
     <AuthProvider>
-      <MainApp />
+      <NavigationProvider>
+        <MainApp />
+      </NavigationProvider>
     </AuthProvider>
   );
 }

@@ -22,7 +22,7 @@
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
-import { getFirestore } from '../config/firebase.js';
+import { getFirestore, runWithFreshChannel } from '../config/firebase.js';
 
 export const ENQUIRIES_COLLECTION = 'enquiries';
 
@@ -101,65 +101,76 @@ export const buildEnquiryFields = (body = {}) => {
 
 /* ------------------------------------------------------------------ reads */
 
+// Every Firestore operation below runs inside `runWithFreshChannel`: when the
+// Admin SDK's credential channel has gone stale (UNAUTHENTICATED /
+// DEADLINE_EXCEEDED / UNAVAILABLE), the call rebuilds the channel and retries
+// once instead of surfacing 503 DATA_LAYER_UNAVAILABLE. Application-level
+// errors (NOT_FOUND, VALIDATION_ERROR, ...) pass through untouched.
+
 /** Every enquiry, newest first (admin view). */
-export const listEnquiries = async () => {
-  const snap = await enquiries().limit(500).get();
-  return snap.docs.map(snapshotToEnquiry).sort(newestFirst);
-};
+export const listEnquiries = async () =>
+  runWithFreshChannel(async () => {
+    const snap = await enquiries().limit(500).get();
+    return snap.docs.map(snapshotToEnquiry).sort(newestFirst);
+  });
 
 /** One enquiry by document id, or null. */
-export const getEnquiry = async (id) => {
-  if (!id) return null;
-  const snap = await enquiryDoc(id).get();
-  return snap.exists ? snapshotToEnquiry(snap) : null;
-};
+export const getEnquiry = async (id) =>
+  runWithFreshChannel(async () => {
+    if (!id) return null;
+    const snap = await enquiryDoc(id).get();
+    return snap.exists ? snapshotToEnquiry(snap) : null;
+  });
 
 /* ----------------------------------------------------------------- writes */
 
 /** Creates an enquiry. `submittedBy` is supplied by the controller. */
-export const createEnquiry = async (fields, submittedBy) => {
-  const record = {
-    ...fields,
-    status: 'Unread',
-    submittedBy: submittedBy || 'anonymous',
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  };
+export const createEnquiry = async (fields, submittedBy) =>
+  runWithFreshChannel(async () => {
+    const record = {
+      ...fields,
+      status: 'Unread',
+      submittedBy: submittedBy || 'anonymous',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
 
-  const ref = await enquiries().add(record);
-  const created = await ref.get();
-  console.log(`[Enquiries] New enquiry from ${record.name} (${record.subject})`);
-  return snapshotToEnquiry(created);
-};
+    const ref = await enquiries().add(record);
+    const created = await ref.get();
+    console.log(`[Enquiries] New enquiry from ${record.name} (${record.subject})`);
+    return snapshotToEnquiry(created);
+  });
 
 /**
  * Marks an enquiry as read (admin only).
  *
  * @throws {Error & {code: 'NOT_FOUND'}}
  */
-export const markEnquiryReadById = async (id) => {
-  const ref = enquiryDoc(id);
-  const snap = await ref.get();
-  if (!snap.exists) throw notFoundError();
+export const markEnquiryReadById = async (id) =>
+  runWithFreshChannel(async () => {
+    const ref = enquiryDoc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFoundError();
 
-  await ref.update({
-    status: 'Read',
-    readAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
+    await ref.update({
+      status: 'Read',
+      readAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    });
+    const updated = await ref.get();
+    return snapshotToEnquiry(updated);
   });
-  const updated = await ref.get();
-  return snapshotToEnquiry(updated);
-};
 
 /**
  * Deletes an enquiry (admin only).
  *
  * @throws {Error & {code: 'NOT_FOUND'}}
  */
-export const deleteEnquiryById = async (id) => {
-  const ref = enquiryDoc(id);
-  const snap = await ref.get();
-  if (!snap.exists) throw notFoundError();
-  await ref.delete();
-  return { id, deleted: true };
-};
+export const deleteEnquiryById = async (id) =>
+  runWithFreshChannel(async () => {
+    const ref = enquiryDoc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFoundError();
+    await ref.delete();
+    return { id, deleted: true };
+  });

@@ -31,7 +31,7 @@
  */
 
 import { FieldValue } from 'firebase-admin/firestore';
-import { getFirestore } from '../config/firebase.js';
+import { getFirestore, runWithFreshChannel } from '../config/firebase.js';
 
 export const APPLICATIONS_COLLECTION = 'admission_applications';
 
@@ -173,66 +173,76 @@ const allocateApplicationId = async (preferred) => {
 
 /* ------------------------------------------------------------------ reads */
 
+// Every Firestore operation below runs inside `runWithFreshChannel`: when the
+// Admin SDK's credential channel has gone stale (UNAUTHENTICATED /
+// DEADLINE_EXCEEDED / UNAVAILABLE), the call rebuilds the channel and retries
+// once instead of surfacing 503 DATA_LAYER_UNAVAILABLE. Application-level
+// errors (NOT_FOUND, VALIDATION_ERROR, ...) pass through untouched.
+
 /**
  * Applications owned by one applicant: everything stored under their uid OR
  * their verified e-mail (covers applications submitted before signing in).
  * Two single-field queries, merged and de-duplicated.
  */
-export const listApplicationsForApplicant = async ({ uid, email }) => {
-  const queries = [];
-  if (uid) queries.push(applications().where('studentUid', '==', uid).limit(100).get());
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  if (normalizedEmail) queries.push(applications().where('email', '==', normalizedEmail).limit(100).get());
+export const listApplicationsForApplicant = async ({ uid, email }) =>
+  runWithFreshChannel(async () => {
+    const queries = [];
+    if (uid) queries.push(applications().where('studentUid', '==', uid).limit(100).get());
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (normalizedEmail) queries.push(applications().where('email', '==', normalizedEmail).limit(100).get());
 
-  const snapshots = await Promise.all(queries);
-  const seen = new Set();
-  const merged = [];
-  for (const snap of snapshots) {
-    for (const doc of snap.docs) {
-      if (seen.has(doc.id)) continue;
-      seen.add(doc.id);
-      merged.push(snapshotToApplication(doc));
+    const snapshots = await Promise.all(queries);
+    const seen = new Set();
+    const merged = [];
+    for (const snap of snapshots) {
+      for (const doc of snap.docs) {
+        if (seen.has(doc.id)) continue;
+        seen.add(doc.id);
+        merged.push(snapshotToApplication(doc));
+      }
     }
-  }
-  return merged.sort(newestFirst);
-};
+    return merged.sort(newestFirst);
+  });
 
 /** Every application (admin view). */
-export const listAllApplications = async () => {
-  const snap = await applications().limit(500).get();
-  return snap.docs.map(snapshotToApplication).sort(newestFirst);
-};
+export const listAllApplications = async () =>
+  runWithFreshChannel(async () => {
+    const snap = await applications().limit(500).get();
+    return snap.docs.map(snapshotToApplication).sort(newestFirst);
+  });
 
 /**
  * The first ACTIVE (not rejected) application an applicant holds for a course.
  * The caller decides which identity (uid / e-mail) is being looked up — the
  * controller only ever passes identities it verified itself.
  */
-export const findActiveApplication = async ({ uid, email, courseId }) => {
-  const candidates = [];
-  if (uid) {
-    const snap = await applications().where('studentUid', '==', uid).limit(50).get();
-    candidates.push(...snap.docs);
-  }
-  const normalizedEmail = String(email || '').trim().toLowerCase();
-  if (normalizedEmail) {
-    const snap = await applications().where('email', '==', normalizedEmail).limit(50).get();
-    candidates.push(...snap.docs);
-  }
+export const findActiveApplication = async ({ uid, email, courseId }) =>
+  runWithFreshChannel(async () => {
+    const candidates = [];
+    if (uid) {
+      const snap = await applications().where('studentUid', '==', uid).limit(50).get();
+      candidates.push(...snap.docs);
+    }
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (normalizedEmail) {
+      const snap = await applications().where('email', '==', normalizedEmail).limit(50).get();
+      candidates.push(...snap.docs);
+    }
 
-  const active = candidates
-    .map(snapshotToApplication)
-    .filter((app) => app.courseId === courseId && app.status !== 'Rejected')
-    .sort(newestFirst);
-  return active[0] || null;
-};
+    const active = candidates
+      .map(snapshotToApplication)
+      .filter((app) => app.courseId === courseId && app.status !== 'Rejected')
+      .sort(newestFirst);
+    return active[0] || null;
+  });
 
 /** One application by document id, or null. */
-export const getApplication = async (id) => {
-  if (!id) return null;
-  const snap = await applicationDoc(id).get();
-  return snap.exists ? snapshotToApplication(snap) : null;
-};
+export const getApplication = async (id) =>
+  runWithFreshChannel(async () => {
+    if (!id) return null;
+    const snap = await applicationDoc(id).get();
+    return snap.exists ? snapshotToApplication(snap) : null;
+  });
 
 /* ----------------------------------------------------------------- writes */
 
@@ -245,23 +255,30 @@ export const getApplication = async (id) => {
  */
 export const createApplication = async (fields, { studentUid, submittedByUid }) => {
   const rest = { ...fields };
-  const applicationId = await allocateApplicationId(rest.applicationId);
-  delete rest.applicationId;
-  const record = {
-    ...rest,
-    applicationId,
-    studentUid: studentUid || GUEST_UID,
-    submittedByUid: submittedByUid || 'anonymous',
-    createdAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp()
-  };
 
-  const ref = await applications().add(record);
-  const created = await ref.get();
-  console.log(
-    `[Applications] Created ${applicationId} (studentUid=${record.studentUid}, course=${record.courseId})`
-  );
-  return snapshotToApplication(created);
+  // The whole body (id allocation + write + read-back) runs inside one retry
+  // closure so a stale-channel failure anywhere in the sequence rebuilds the
+  // channel and replays it — the Firestore client is resolved inside the
+  // closure on every attempt, so the retry picks up the rebuilt channel.
+  return runWithFreshChannel(async () => {
+    const applicationId = await allocateApplicationId(rest.applicationId);
+    delete rest.applicationId;
+    const record = {
+      ...rest,
+      applicationId,
+      studentUid: studentUid || GUEST_UID,
+      submittedByUid: submittedByUid || 'anonymous',
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp()
+    };
+
+    const ref = await applications().add(record);
+    const created = await ref.get();
+    console.log(
+      `[Applications] Created ${applicationId} (studentUid=${record.studentUid}, course=${record.courseId})`
+    );
+    return snapshotToApplication(created);
+  });
 };
 
 /**
@@ -269,38 +286,40 @@ export const createApplication = async (fields, { studentUid, submittedByUid }) 
  *
  * @throws {Error & {code: 'NOT_FOUND'}} when the application is gone
  */
-export const updateApplicationById = async (id, { status, adminRemarks }) => {
-  const ref = applicationDoc(id);
-  const snap = await ref.get();
-  if (!snap.exists) throw notFoundError();
+export const updateApplicationById = async (id, { status, adminRemarks }) =>
+  runWithFreshChannel(async () => {
+    const ref = applicationDoc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFoundError();
 
-  const patch = { updatedAt: FieldValue.serverTimestamp() };
-  if (status !== undefined) {
-    if (!APPLICATION_STATUSES.includes(status)) {
-      throw ValidationError(`Status must be one of: ${APPLICATION_STATUSES.join(', ')}.`);
+    const patch = { updatedAt: FieldValue.serverTimestamp() };
+    if (status !== undefined) {
+      if (!APPLICATION_STATUSES.includes(status)) {
+        throw ValidationError(`Status must be one of: ${APPLICATION_STATUSES.join(', ')}.`);
+      }
+      patch.status = status;
+      patch.statusUpdatedAt = FieldValue.serverTimestamp();
     }
-    patch.status = status;
-    patch.statusUpdatedAt = FieldValue.serverTimestamp();
-  }
-  if (adminRemarks !== undefined) {
-    const text = String(adminRemarks).slice(0, TEXT_LIMITS.adminRemarks);
-    patch.adminRemarks = text;
-  }
+    if (adminRemarks !== undefined) {
+      const text = String(adminRemarks).slice(0, TEXT_LIMITS.adminRemarks);
+      patch.adminRemarks = text;
+    }
 
-  await ref.update(patch);
-  const updated = await ref.get();
-  return snapshotToApplication(updated);
-};
+    await ref.update(patch);
+    const updated = await ref.get();
+    return snapshotToApplication(updated);
+  });
 
 /**
  * Deletes an application (admin only).
  *
  * @throws {Error & {code: 'NOT_FOUND'}}
  */
-export const deleteApplicationById = async (id) => {
-  const ref = applicationDoc(id);
-  const snap = await ref.get();
-  if (!snap.exists) throw notFoundError();
-  await ref.delete();
-  return { id, deleted: true };
-};
+export const deleteApplicationById = async (id) =>
+  runWithFreshChannel(async () => {
+    const ref = applicationDoc(id);
+    const snap = await ref.get();
+    if (!snap.exists) throw notFoundError();
+    await ref.delete();
+    return { id, deleted: true };
+  });
