@@ -19,6 +19,7 @@
 import { isFirebaseConfigured, getFirestore } from '../config/firebase.js';
 import { dataLayerUnavailable } from '../middleware/serviceUnavailable.js';
 import { loadRole } from '../middleware/auth.js';
+import { getProfile, findProfileByEmail, setProfileCourse } from '../services/profiles.js';
 import {
   APPLICATION_STATUSES,
   GUEST_UID,
@@ -27,6 +28,7 @@ import {
   listAllApplications,
   listApplicationsForApplicant,
   findActiveApplication,
+  getApplication,
   updateApplicationById,
   deleteApplicationById
 } from '../services/applications.js';
@@ -68,6 +70,70 @@ const ensureAdminRole = async (req, res) => {
     console.error('[Applications] Failed to read role:', err?.message);
     dataLayerUnavailable(res);
     return true;
+  }
+};
+
+/**
+ * Associates an application's course with the owning student profile after a
+ * status change. Runs server-side only, never fails the admin's request
+ * (the status update itself is the primary operation).
+ *
+ * Identity: the profile is resolved by the application's stored `studentUid`
+ * (written from the VERIFIED ID token at submission) first, then by the
+ * application's e-mail — never by name.
+ *
+ * Rules:
+ *  - the effective course of a student is the course of their NEWEST
+ *    Approved application (applications are stored newest-first, the same
+ *    ordering both dashboards use);
+ *  - Pending / Rejected applications never contribute a course;
+ *  - the profile's course is only rewritten when it actually changes, and is
+ *    cleared only when it came from an application that just left Approved
+ *    state (so a registration-time course from another source is preserved);
+ *  - failures are logged, never surfaced as a failed approval.
+ */
+const syncProfileCourse = async (before, after) => {
+  try {
+    const wasApproved = before?.status === 'Approved';
+    const isApproved = after?.status === 'Approved';
+    if (!wasApproved && !isApproved) return; // Pending/Rejected never set a course
+
+    // Resolve the profile of the applicant: verified uid first, e-mail second.
+    const uid = String(after.studentUid || '').trim();
+    const isOwnUid = uid && uid !== GUEST_UID && uid !== 'anonymous';
+    const profile = (isOwnUid ? await getProfile(uid) : null)
+      || (String(after.email || '').trim() ? await findProfileByEmail(after.email) : null);
+    if (!profile) {
+      console.warn(`[Applications] No profile found to sync course for ${after.applicationId} (uid=${uid || 'none'})`);
+      return;
+    }
+
+    // Effective course: newest Approved application of THIS student (uid + e-mail).
+    const own = await listApplicationsForApplicant({ uid: profile.uid, email: profile.email });
+    const newestApproved = (own || [])
+      .filter((app) => app.status === 'Approved' && String(app.courseName || '').trim())
+      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))[0] || null;
+
+    const currentCourse = String(profile.course || '').trim();
+    const desiredCourse = newestApproved ? String(newestApproved.courseName).trim() : '';
+
+    if (desiredCourse) {
+      if (currentCourse !== desiredCourse) {
+        await setProfileCourse(profile.uid, desiredCourse);
+        console.log(`[Applications] Profile ${profile.uid} course → "${desiredCourse}" (approved ${after.applicationId})`);
+      }
+      return;
+    }
+
+    // No approved application remains: only clear a course that this very
+    // application could have written (it left Approved state just now).
+    const courseFromThisApp = String(after.courseName || '').trim();
+    if (wasApproved && courseFromThisApp && currentCourse === courseFromThisApp) {
+      await setProfileCourse(profile.uid, '');
+      console.log(`[Applications] Profile ${profile.uid} course cleared (application ${after.applicationId} un-approved)`);
+    }
+  } catch (err) {
+    console.warn(`[Applications] Profile course sync failed for ${after?.applicationId}:`, err?.message);
   }
 };
 
@@ -209,7 +275,12 @@ export const updateApplication = async (req, res) => {
   }
 
   try {
+    const before = await getApplication(req.params.id);
     const updated = await updateApplicationById(req.params.id, patch);
+    if (patch.status !== undefined) {
+      // Keep the student's profile course in sync with the approval decision.
+      await syncProfileCourse(before, updated);
+    }
     console.log(`[Applications] Admin ${req.firebaseUser.uid} set ${updated.applicationId} → ${updated.status}`);
     return res.json(updated);
   } catch (err) {

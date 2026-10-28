@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { subscribeUserApplications } from '../services/admissionService';
 import { updateUserProfileData, updateUserPassword } from '../services/userService';
@@ -59,6 +59,27 @@ export const StudentDashboard = ({ setActivePage }) => {
 
   // Notification Banner
   const [notificationMsg, setNotificationMsg] = useState('');
+
+  /**
+   * Course shown in the profile card.
+   *
+   * Prefers the course stored on the user's Firestore profile (the server
+   * writes it when an application is approved). When the profile has no
+   * usable value ('' / 'Not Selected') it falls back to the course of the
+   * student's NEWEST Approved admission application — applications arrive
+   * newest-first, and Pending/Rejected applications never contribute.
+   * 'Not Selected' only appears when neither source has a course.
+   */
+  const displayCourse = useMemo(() => {
+    const profileCourse = String(userProfile?.course || '').trim();
+    if (profileCourse && profileCourse !== 'Not Selected') return profileCourse;
+
+    const approvedCourse = (applications || [])
+      .filter((app) => app.status === 'Approved')
+      .map((app) => String(app.courseName || '').trim())
+      .find(Boolean);
+    return approvedCourse || '';
+  }, [userProfile?.course, applications]);
 
   useEffect(() => {
     const uid = currentUser?.uid || userProfile?.uid;
@@ -341,7 +362,7 @@ export const StudentDashboard = ({ setActivePage }) => {
                 <div className="flex items-center justify-between p-3 rounded-xl bg-slate-950 border border-slate-800">
                   <span className="text-slate-500 flex items-center gap-1.5"><BookOpen className="w-3.5 h-3.5 text-amber-400" /> Course:</span>
                   <span className="font-semibold text-slate-200 text-right max-w-[150px] truncate">
-                    {userProfile?.course || 'Not Selected'}
+                    {displayCourse || 'Not Selected'}
                   </span>
                 </div>
 

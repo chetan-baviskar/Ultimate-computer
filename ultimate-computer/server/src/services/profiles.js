@@ -10,7 +10,7 @@
  *     email,          // lower-cased, from the VERIFIED ID token
  *     fullName,
  *     mobile,
- *     course,         // course selected at registration
+ *     course,         // optional — no longer chosen during account creation
  *     role,           // ALWAYS written server-side; public registration => 'student'
  *     status,         // 'active' | 'disabled'
  *     authProvider,   // 'password' (Firebase Authentication)
@@ -170,6 +170,27 @@ export const updateProfile = async (uid, fields) => {
   if (Object.keys(allowed).length === 0) return getProfile(uid);
 
   await runWithFreshChannel(() => userDoc(uid).update({ ...allowed, updatedAt: FieldValue.serverTimestamp() }));
+  return getProfile(uid);
+};
+
+/**
+ * Writes ONLY the `course` field of a student profile (never any other
+ * field), used to associate an APPROVED admission application with the
+ * student who owns the profile. Passing '' clears the value.
+ *
+ * Not reachable from any route by itself — the applications controller calls
+ * it server-side after an admin status change, so a client can never set a
+ * course directly.
+ *
+ * @throws {Error} when the profile does not exist (Firestore update guard)
+ */
+export const setProfileCourse = async (uid, course) => {
+  const value = String(course || '').trim();
+  if (!uid) throw ValidationError('VALIDATION_ERROR', 'A Firebase UID is required to set a course.');
+
+  await runWithFreshChannel(() =>
+    userDoc(uid).update({ course: value, updatedAt: FieldValue.serverTimestamp() })
+  );
   return getProfile(uid);
 };
 

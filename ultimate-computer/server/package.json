@@ -10,7 +10,7 @@
     "start": "node src/index.js",
     "provision:admin": "node scripts/provision-admin.mjs",
     "provision:admin:check": "node scripts/provision-admin.mjs --check",
-    "test": "node test-degraded.js && node test-firebase-recovery.mjs && node test-login-flow.js && node test-admin-dashboard.mjs && node test-admin-auth.mjs && node test-student-auth.mjs && node test-courses.mjs && node test-applications.mjs && node test-enquiries.mjs"
+    "test": "node test-degraded.js && node test-firebase-recovery.mjs && node test-login-flow.js && node test-admin-dashboard.mjs && node test-admin-auth.mjs && node test-student-auth.mjs && node test-courses.mjs && node test-applications.mjs && node test-profile-course.mjs && node test-enquiries.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -212,6 +212,13 @@ const run = async () => {
   await evaluate(`window.__uc.waitFor(() => document.body.innerText.includes('Create Student Account'), 15000)`);
   check('Registration page opens', true);
 
+  // The Course / Branch dropdown must be gone from account creation only.
+  const courseFieldPresent = await evaluate(`
+    Boolean(document.querySelector('select')) ||
+    document.body.innerText.includes('Course / Branch')
+  `);
+  check('sign-up form has no Course / Branch selection', courseFieldPresent === false);
+
   await evaluate(`
     window.__uc.setValue('input[type=text]', ${JSON.stringify(FULL_NAME)});
     window.__uc.setValue('input[type=email]', ${JSON.stringify(EMAIL)});
@@ -248,14 +255,16 @@ const run = async () => {
     return {
       name: t.includes(${JSON.stringify(FULL_NAME)}),
       email: t.includes(${JSON.stringify(EMAIL)}),
-      course: t.includes('ADCA'),
+      // Account creation no longer asks for a course/branch, so a freshly
+      // registered profile shows the dashboard's "no course" placeholder.
+      noCourse: t.includes('Not Selected'),
       mobile: t.includes(${JSON.stringify(MOBILE)}),
       role: /role:\\s*student/i.test(t)
     };
   })()`);
   check('dashboard shows the Firestore profile name', profileBits.name);
   check('dashboard shows the registered email', profileBits.email);
-  check('dashboard shows the selected course', profileBits.course);
+  check('dashboard shows no course selected after sign-up', profileBits.noCourse);
   check('dashboard shows the registered mobile number', profileBits.mobile);
   check('dashboard shows the student role', profileBits.role);
 

@@ -3,7 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
 import { Badge } from '../components/ui/Badge';
-import { User, Mail, Phone, Lock, Eye, EyeOff, UserPlus, AlertCircle, ArrowLeft, CheckCircle2, BookOpen } from 'lucide-react';
+import { User, Mail, Phone, Lock, Eye, EyeOff, UserPlus, AlertCircle, ArrowLeft, CheckCircle2 } from 'lucide-react';
 
 export const Register = ({ setActivePage }) => {
   const { registerStudent } = useAuth();
@@ -12,7 +12,6 @@ export const Register = ({ setActivePage }) => {
     fullName: '',
     email: '',
     mobile: '',
-    course: 'ADCA (Advanced Diploma in Computer Applications)',
     password: '',
     confirmPassword: ''
   });
@@ -63,8 +62,7 @@ export const Register = ({ setActivePage }) => {
         email: formData.email.trim(),
         password: formData.password,
         fullName: formData.fullName.trim(),
-        mobile: formData.mobile.trim(),
-        course: formData.course
+        mobile: formData.mobile.trim()
       });
       setSuccessMsg('Student account registered successfully! Redirecting to Student Login...');
       setTimeout(() => {
@@ -180,31 +178,6 @@ export const Register = ({ setActivePage }) => {
               />
             </div>
             {errors.mobile && <p className="text-xs text-red-400 mt-1">{errors.mobile}</p>}
-          </div>
-
-          {/* Course / Branch */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-              Course / Branch Selection *
-            </label>
-            <div className="relative">
-              <BookOpen className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <select
-                value={formData.course}
-                onChange={(e) => setFormData({ ...formData, course: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 appearance-none cursor-pointer"
-              >
-                <option value="ADCA (Advanced Diploma in Computer Applications)">ADCA (Advanced Diploma in Computer Applications)</option>
-                <option value="DCA (Diploma in Computer Applications)">DCA (Diploma in Computer Applications)</option>
-                <option value="Tally Prime with GST Certification">Tally Prime with GST Certification</option>
-                <option value="Python Data Science & AI">Python Data Science & AI</option>
-                <option value="Full Stack Web Development">Full Stack Web Development</option>
-                <option value="C & C++ Programming Fundamentals">C & C++ Programming Fundamentals</option>
-                <option value="Computer Hardware & Networking">Computer Hardware & Networking</option>
-                <option value="Graphic Designing & DTP">Graphic Designing & DTP</option>
-                <option value="Office Automation & CCC">Office Automation & CCC</option>
-              </select>
-            </div>
           </div>
 
           {/* Password */}

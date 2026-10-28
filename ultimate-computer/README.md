@@ -227,6 +227,7 @@ node test-admin-dashboard.mjs    # Phase 4: admin-only student listing + remaini
 node test-admin-auth.mjs         # admin provisioning state, login, invalid credentials,
                                  # admin-only authorization, student restrictions,
                                  # dashboard data loading
+node test-profile-course.mjs     # approved applications sync the course to the profile
 node test-student-auth.mjs       # Firebase Authentication regression suite
 node test-login-flow.js          # health now, full auth flow once auth is back (skips otherwise)
 node test-password-change.js     # same skip behaviour
@@ -240,12 +241,13 @@ again; they never modify pre-existing student data. `test-courses.mjs`,
 `server/firebase-service-account.json` (used to verify what really landed in
 Firestore).
 
-Two browser end-to-end suites run from the project root against the live dev
+Three browser end-to-end suites run from the project root against the live dev
 server **and** the API (`npm run dev` + `npm run server`):
 
 ```bash
 node test-auth-ui.mjs           # student auth: register/login/refresh/logout
 node test-admin-ui.mjs          # admin login, dashboard data, logout, guards
+node test-course-flow-ui.mjs    # apply -> admin approves -> course shown on profile
 ```
 
 ## API reference
