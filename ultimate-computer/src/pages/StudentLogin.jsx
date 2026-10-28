@@ -8,7 +8,7 @@ import { UserCheck, Lock, Eye, EyeOff, LogIn, AlertCircle } from 'lucide-react';
 
 /** Shown when the address has no Firebase Authentication user yet. */
 const MIGRATION_MESSAGE =
-  'No sign-in account exists for this email address. If you created your account before the website upgrade, contact the office on +91 9422295496 (or use Forgot Password) to request account migration — existing passwords are never reset automatically.';
+  'No sign-in account exists for this email address. If you created your account before the website upgrade, contact the office on +91 9422295496 to request account migration — existing passwords are never reset automatically.';
 
 export const StudentLogin = ({ setActivePage }) => {
   const { loginStudent } = useAuth();
@@ -151,17 +151,10 @@ export const StudentLogin = ({ setActivePage }) => {
 
           {/* Password */}
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="mb-2">
               <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
                 Password *
               </label>
-              <button
-                type="button"
-                onClick={() => setActivePage('forgot-password')}
-                className="text-xs text-blue-400 hover:underline"
-              >
-                Forgot Password?
-              </button>
             </div>
             <div className="relative">
               <Lock className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />

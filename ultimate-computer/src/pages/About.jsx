@@ -3,7 +3,10 @@ import { SectionHeader } from '../components/ui/SectionHeader';
 import { Card } from '../components/ui/Card';
 import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
-import { Monitor, Award, ShieldCheck, Target, Eye, Users, CheckCircle2, Phone, Building, Cpu, Wifi, BookOpen } from 'lucide-react';
+import { Monitor, Award, ShieldCheck, Target, Eye, Users, CheckCircle2, Phone, Building, Cpu, Wifi, BookOpen, MapPin, Navigation } from 'lucide-react';
+
+/** Google Maps listing for the Ultimate Computer campus. */
+const CAMPUS_MAP_URL = 'https://maps.app.goo.gl/Wag8u4cf7zRFYKzj6?g_st=iw';
 
 export const About = ({ setActivePage }) => {
   return (
@@ -106,30 +109,55 @@ export const About = ({ setActivePage }) => {
         </div>
       </section>
 
-      {/* Contact CTA */}
-      <section className="max-w-7xl mx-auto px-4 text-center">
-        <div className="glass-panel p-8 rounded-2xl border border-slate-800 space-y-4 max-w-3xl mx-auto">
-          <h3 className="text-2xl font-bold text-white">Have Questions About Admissions?</h3>
-          <p className="text-slate-300 text-sm">
-            Contact our academic coordinator directly at <strong className="text-blue-400">+91 9422295496</strong> or visit our campus for a free counseling session.
-          </p>
-          <div className="pt-2 flex justify-center gap-4">
-            <a
-              href="tel:+919422295496"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-500/25 transition-all"
-            >
-              <Phone className="w-4 h-4" /> Call +91 9422295496
-            </a>
-            <Button
-              variant="outline"
-              size="md"
-              onClick={() => {
-                setActivePage('contact');
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-              }}
-            >
-              Contact Us Page
-            </Button>
+      {/* Contact CTA + Campus location */}
+      <section className="max-w-7xl mx-auto px-4">
+        {/* Desktop: the two cards sit side by side. Mobile & tablet: stacked. */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-stretch">
+          {/* Have Questions About Admissions? */}
+          <div className="glass-panel glass-panel-hover p-8 rounded-2xl border border-slate-800 space-y-4 flex flex-col justify-center text-center">
+            <h3 className="text-2xl font-bold text-white">Have Questions About Admissions?</h3>
+            <p className="text-slate-300 text-sm">
+              Contact our academic coordinator directly at <strong className="text-blue-400">+91 9422295496</strong> or visit our campus for a free counseling session.
+            </p>
+            <div className="pt-2 flex flex-wrap justify-center gap-4">
+              <a
+                href="tel:+919422295496"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm shadow-lg shadow-blue-500/25 transition-all"
+              >
+                <Phone className="w-4 h-4" /> Call +91 9422295496
+              </a>
+              <Button
+                variant="outline"
+                size="md"
+                onClick={() => {
+                  setActivePage('contact');
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+              >
+                Contact Us Page
+              </Button>
+            </div>
+          </div>
+
+          {/* Visit Our Campus */}
+          <div className="glass-panel glass-panel-hover p-8 rounded-2xl border border-cyan-500/20 bg-slate-900/80 space-y-4 flex flex-col justify-center text-center">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-500/20 to-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto shrink-0">
+              <MapPin className="w-6 h-6" />
+            </div>
+            <h3 className="text-2xl font-bold text-white">Visit Our Campus</h3>
+            <p className="text-slate-300 text-sm leading-relaxed">
+              Visit Ultimate Computer for course enquiries and counselling.
+            </p>
+            <div className="pt-2 flex justify-center">
+              <a
+                href={CAMPUS_MAP_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-500 hover:to-cyan-400 text-white font-bold text-sm shadow-lg shadow-blue-500/25 border border-blue-400/20 transition-all"
+              >
+                <Navigation className="w-4 h-4" /> Get Directions
+              </a>
+            </div>
           </div>
         </div>
       </section>

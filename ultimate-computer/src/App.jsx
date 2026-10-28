@@ -16,7 +16,6 @@ import { Admission } from './pages/Admission';
 import { Contact } from './pages/Contact';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
-import { ForgotPassword } from './pages/ForgotPassword';
 import { StudentDashboard } from './pages/StudentDashboard';
 import { AdminDashboard } from './pages/AdminDashboard';
 import { NotFound } from './pages/NotFound';
@@ -24,7 +23,7 @@ import { NotFound } from './pages/NotFound';
 // Every page id the router knows about (anything else renders the 404 page).
 const KNOWN_PAGES = [
   'home', 'about', 'courses', 'course-details', 'fee-structure', 'admission',
-  'contact', 'login', 'register', 'forgot-password', 'student-dashboard',
+  'contact', 'login', 'register', 'student-dashboard',
   'admin-dashboard', '404',
 ];
 
@@ -114,8 +113,6 @@ function MainApp() {
         return <Login setActivePage={setActivePage} initialTab="student" />;
       case 'register':
         return <Register setActivePage={setActivePage} />;
-      case 'forgot-password':
-        return <ForgotPassword setActivePage={setActivePage} />;
       case 'student-dashboard':
         // Protected Student Route Guard
         if (!currentUser) {

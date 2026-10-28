@@ -89,8 +89,11 @@ stored profile role (or the Admin-SDK custom claim) says `admin`.
 
 ## Password resets
 
-Self-service reset emails require an email delivery service (not configured).
-The Forgot Password page directs students to the office; the admin reset route
+Self-service password reset has been removed from the user-facing interface:
+the student and admin login pages no longer offer a "Forgot Password" link, and
+the reset-request page is no longer part of the site — students contact the
+office on +91 9422295496 for account recovery. The API and the Firebase
+Auth helper (`sendPasswordReset`) are unchanged, and the admin reset route
 (`PATCH /api/users/:uid/password`) is one of the routes waiting for a data
 store.
 
